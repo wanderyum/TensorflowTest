@@ -2,13 +2,13 @@
 
 import numpy as np
 import tensorflow as tf
-import seaborn as sns
+#import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib import animation
 
-sns.set(color_codes=True)
+#sns.set(color_codes=True)
 
-seed = 42
+seed = 30
 np.random.seed(seed)
 tf.set_random_seed(seed)
 
