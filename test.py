@@ -1,12 +1,25 @@
+# https://github.com/AYLIEN/gan-intro/blob/master/gan.py
+
 import numpy as np
 import tensorflow as tf
 import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib import animation
 
 sns.set(color_codes=True)
 
 seed = 42
 np.random.seed(seed)
 tf.set_random_seed(seed)
+
+argDict = { 'batch_size': 8,
+            'hidden_size': 4,
+            'minibatch': True,
+            'anim_path': None,
+            'num_steps': 5000,
+            'log_every': 500,
+            'anim_every': 1
+            }
 
 class DataDistribution(object):
     def __init__(self):
@@ -15,7 +28,7 @@ class DataDistribution(object):
     
     def sample(self, N):
         samples = np.random.normal(self.mu, self.sigma, N)
-        samples.sort()
+        #samples.sort()
         return samples
 
 class GeneratorDistribution(object):
@@ -81,8 +94,8 @@ class GAN(object):
         # This defines the generator network - it takes samples from a noise
         # distribution as input, and passes them through an MLP.
         with tf.variable_scope('G'):
-            self.z = tf.placeholder(tf.float32, shape=(params.batch_size, 1))
-            self.G = generator(self.z, params.hidden_size)
+            self.z = tf.placeholder(tf.float32, shape=(params['batch_size'], 1))
+            self.G = generator(self.z, params['hidden_size'])
             
         # The discriminator tries to tell the difference between samples from
         # the true data distribution (self.x) and the generated samples
@@ -91,11 +104,11 @@ class GAN(object):
         # Here we create two copies of the discriminator network
         # that share parameters, as you cannot use the same network with
         # different inputs in TensorFlow.
-        self.x = tf.placeholder(tf.float32, shape=(params.batch_size, 1))
+        self.x = tf.placeholder(tf.float32, shape=(params['batch_size'], 1))
         with tf.variable_scope('D'):
-            self.D1 = discriminator(self.x, params.hidden_size, params.minibatch)
+            self.D1 = discriminator(self.x, params['hidden_size'], params['minibatch'])
         with tf.variable_scope('D', reuse=True):
-            self.D2 = discriminator(self.G, params.hidden_size, params.minibatch)
+            self.D2 = discriminator(self.G, params['hidden_size'], params['minibatch'])
         
         # Define the loss for discriminator and generator networks
         # (see the original paper for details), and create optimizers for both
@@ -116,28 +129,32 @@ def train(model, data, gen, params):
         tf.local_variables_initializer().run()
         tf.global_variables_initializer().run()
         
-        for step in range(params.num_steps + 1):
+        for step in range(params['num_steps'] + 1):
             # update discriminator
-            x = data.sample(params.batch_size)
-            z = gen.sample(params.batch_size)
+            x = data.sample(params['batch_size'])
+            z = gen.sample(params['batch_size'])
             loss_d, _ = sess.run([model.loss_d, model.opt_d],{
-                        model.x: np.reshape(x, (params.batch_size, 1)),
-                        model.z: np.reshape(z, (params.batch_size, 1))
+                        model.x: np.reshape(x, (params['batch_size'], 1)),
+                        model.z: np.reshape(z, (params['batch_size'], 1))
                         })
             
             # update generator
-            z = gen.sample(params.batch_size)
+            z = gen.sample(params['batch_size'])
             loss_g, _ = sess.run([model.loss_g, model.opt_g],{
-                        model.z: np.reshape(z, (params.batch_size, 1))
+                        model.z: np.reshape(z, (params['batch_size'], 1))
                         })
-            if step % params.log_every == 0:
+            if step % params['log_every'] == 0:
                 print('{}: {:.4f}\t{:.4f}'.format(step, loss_d, loss_g))
-            
-            if params.anim_path and (step % params.anim_every == 0):
-                anim_frames.append(samples(model, sess, data, gen.range, params.batch_size))
-            else:
-                samps = samples(model, sess, data, gen.range, params.batch_size)
+                samps = samples(model, sess, data, gen.range, params['batch_size'])
                 plot_distributions(samps, gen.range)
+            if params['anim_path'] and (step % params['anim_every'] == 0):
+                anim_frames.append(samples(model, sess, data, gen.range, params['batch_size']))
+
+        if params['anim_path'] and (step % params['anim_every'] == 0):
+            anim_frames.append(samples(model, sess, data, gen.range, params['batch_size']))
+        else:
+            samps = samples(model, sess, data, gen.range, params['batch_size'])
+            plot_distributions(samps, gen.range)
             
 def samples(model, sess, data, sample_range, batch_size, num_points=10000, num_bins=100):
     '''
@@ -169,8 +186,28 @@ def samples(model, sess, data, sample_range, batch_size, num_points=10000, num_b
     
     return db, pd, pg
 
-            
+def plot_distributions(samps, sample_range):
+    db, pd, pg = samps
+    db_x = np.linspace(-sample_range, sample_range, len(db))
+    p_x = np.linspace(-sample_range, sample_range, len(pd))
+    f, ax = plt.subplots(1)
+    ax.plot(db_x, db, label='decision boundary')
+    ax.set_ylim(0, 1)
+    plt.plot(p_x, pd, label='real data')
+    plt.plot(p_x, pg, label='generated data')
+    plt.title('1D Generative Adversarial Network')
+    plt.xlabel('Data values')
+    plt.ylabel('Probability density')
+    plt.legend()
+    plt.show()
+
+
+
+def main(args):
+    model = GAN(args)
+    train(model, DataDistribution(), GeneratorDistribution(range=8), args)
+
 if __name__ == '__main__':
-    pass
+    main(argDict)
             
             
