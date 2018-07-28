@@ -3,6 +3,19 @@ import tensorflow as tf
 def lrelu(x, leak=0.2, name='lrelu'):
     return tf.maximum(x, leak*x)
 
+def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=False):
+    shape = input_.get_shape().as_list()
+
+    with tf.variable_scope(scope or 'Linear'):
+        w = tf.get_variable('w', [shape[1], output_size], tf.float32, tf.random_normal_initializer(stddev=stddev))
+        b = tf.get_variable('b', [output_size], initializer=tf.constant_initializer(bias_start) )
+
+    if with_w:
+        return tf.matmul(input_, w)+b, w, b
+    else:
+        return tf.matmul(input_, w)+b
+
+
 class batch_norm(object):
     def __init__(self, epsilon=1e-5, momentum=0.9, name='batch_norm'):
         with tf.variable_scope(name):
@@ -21,12 +34,12 @@ class batch_norm(object):
 def conv2d(input_, output_dim,
         kernel_height=5, kernel_width=5, 
         stride_vertical=2, stride_horizontal=2,
-        stddev=0.02, name='conv2d')
+        stddev=0.02, scope='conv2d'):
     '''
     输入: (输入, 输出维数)
     输出: (加bias的卷积层)
     '''
-    with tf.variable_scope(name):
+    with tf.variable_scope(scope):
         w = tf.get_variable('w', [kernel_height, kernel_width, input_.get_shape()[-1], output_dim], 
                 initializer=tf.truncated_normal_initializer(stddev=stddev))
         conv = tf.nn.conv2d(input_, w, strides=[1, stride_vertical, stride_horizontal, 1], padding='SAME')
