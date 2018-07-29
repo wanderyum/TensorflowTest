@@ -48,5 +48,19 @@ def conv2d(input_, output_dim,
 
         return conv
 
+def deconv2d(input_, output_shape,
+        kernel_height=5, kernel_width=5,
+        stride_vertical=2, stride_horizontal=2,
+        stddev=0.02, scope='deconv2d', with_w=False):
+    with tf.variable_scope(scope) as scope:
+        # filter: [height, width, output_cjannels, inchannels]
+        w = tf.get_variable('w', [kernel_height, kernel_width, output_shape[-1], input_.get_shape()[-1]], initializer=tf.random_normal_initializer(stddev=stddev))
+        deconv = tf.nn.conv2d_transpose(input_, w, output_shape=output_shape, stride=[1, stride_vertical, stride_horizontal, 1])
+        bias = tf.get_variable('bias', [output_shape[-1]], initializer=tf.constant_initializer(0.0))
+        deconv = tf.reshape(tf.nn.bias_add(deconv, bias), deconv.get_shape())
 
+        if with_w:
+            return deconv, w, bias
+        else:
+            return deconv
 

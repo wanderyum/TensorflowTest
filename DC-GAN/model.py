@@ -26,6 +26,10 @@ class DCGAN(object):
 
             return tf.nn.sigmoid(h4), h4
 
+    def generator(self, z):
+        with tf.variable_scope('generator') as scope:
+
+
 
 
 
@@ -39,8 +43,7 @@ class DCGAN(object):
 if __name__ == '__main__':
     sess = None
     img = np.array([[1,2,3],[4,5,6]])
-    dcgan = DCGAN(sess)
-    dcgan.discriminator(img)
-    with tf.variable_scope('discriminator'):
-        h = tf.get_variable('h0')
-        print(h.name)
+    with tf.Session() as sess:
+        dcgan = DCGAN(sess)
+        img = tf.placeholder(tf.float32, (64, 96, 96, 1))
+        dcgan.discriminator(img)
