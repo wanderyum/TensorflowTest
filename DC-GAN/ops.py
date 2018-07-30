@@ -1,4 +1,8 @@
 import tensorflow as tf
+import math
+
+def get_conved_size(size, stride):
+    return int(math.ceil(size / stride))
 
 def lrelu(x, leak=0.2, name='lrelu'):
     return tf.maximum(x, leak*x)
