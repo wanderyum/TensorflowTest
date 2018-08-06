@@ -160,7 +160,7 @@ class DCGAN(object):
         # 这里是不应该洗牌一下?
         #
         sample_files = self.data[0:self.sample_num]
-        sample = [set_image(sample_file, 
+        sample = [get_image(sample_file, 
                 input_height=self.input_height, input_width=self.input_width,
                 resize_height=self.output_height, resize_width=self.output_width,
                 crop=self.crop) for sample_file in sample_files]
