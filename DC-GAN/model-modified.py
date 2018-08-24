@@ -171,7 +171,7 @@ class DCGAN(object):
             print('data loaded: epoch', epoch)
             
             for idx in range(batch_idxs):
-                print('start idx:\t', idx)
+                #print('start idx:\t', idx)
                 batch_files = data[idx*config.batch_size: (idx+1)*config.batch_size]
                 batch = [get_image( batch_file,
                                 input_height=self.cfg.input_height,
@@ -214,7 +214,7 @@ class DCGAN(object):
             
 if __name__ == '__main__':
     cfg = Config(   input_height=96, input_width=96, output_height=48, output_width=48, 
-                  dataset_name='faces', epoch=1, log_every=1)
+                  dataset_name='faces', epoch=10, log_every=8)
     
     with tf.Session() as sess:
         dcgan = DCGAN(sess, cfg)
