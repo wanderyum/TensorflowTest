@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 from ops import batch_norm, lrelu, conv2d, linear, get_conved_size, deconv2d
 from utils import imread, get_image
@@ -135,7 +136,7 @@ class DCGAN(object):
         # 因为self.discriminator会被调用两次, 所以要添加reuse参数
         self.G = self.generator(self.z)
         self.D1, self.D1_logits = self.discriminator(self.inputs, reuse=False)
-        self.sampler = self.sampler(self.z)
+        #self.sampler = self.sampler(self.z)
         self.D2, self.D2_logits = self.discriminator(self.G, reuse=True)
         
         self.d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D1_logits, labels=tf.ones_like(self.D1)))
@@ -196,6 +197,17 @@ class DCGAN(object):
                     print('Epoch: [%2d/%2d] [%4d/%4d] time: %4.4f, d_loss: %.8f, g_loss: %.8f' % (epoch, config.epoch, idx, batch_idxs, time.time() - start_time, errD_fake+errD_real, errG))
             if epoch % self.cfg.log_every == 0:
                 self.save(config.checkpoint_dir, epoch+counter)
+    
+    def preview(self):
+        self.load(self.cfg.checkpoint_dir)
+        _z = np.random.uniform(-1, 1, [self.cfg.batch_size, self.cfg.z_dim]).astype(np.float32)
+        z = tf.placeholder(tf.float32, [self.cfg.batch_size, self.cfg.z_dim])
+        ret = self.sampler(z)
+        img = self.sess.run(ret, feed_dict={z: _z})
+        return img
+
+
+
     @property
     def model_dir(self):
         return '{}_{}_{}'.format(self.cfg.dataset_name, self.cfg.output_height, self.cfg.output_width)
@@ -210,16 +222,40 @@ class DCGAN(object):
         self.saver.save(self.sess, os.path.join(checkpoint_dir, model_name), global_step=step)
     
     def load(self, checkpoint_dir):
-        return False, 0
+        import re
+        print('[*] Loading checkpoints...')
+        checkpoint_dir = os.path.join(checkpoint_dir, self.model_dir)
+        
+        ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
+        if ckpt and ckpt.model_checkpoint_path:
+            ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
+            self.saver.restore(self.sess, os.path.join(checkpoint_dir, ckpt_name))
+            counter = int(next(re.finditer("(\d+)(?!.*\d)",ckpt_name)).group(0))
+            print(" [*] Success to read {}".format(ckpt_name))
+            return True, counter
+        else:
+            print(" [*] Failed to find a checkpoint")
+            return False, 0
+
             
 if __name__ == '__main__':
-    cfg = Config(   input_height=96, input_width=96, output_height=48, output_width=48, 
-                  dataset_name='faces', epoch=10, log_every=8)
+    training = True
+    cfg = Config(   input_height=96, input_width=96, output_height=96, output_width=96, 
+                  dataset_name='faces', epoch=20, log_every=18)
     
     with tf.Session() as sess:
         dcgan = DCGAN(sess, cfg)
-        dcgan.train()
-        
-        
-            
-            
+        if training == False:
+            dcgan.train()
+        else:
+            res = dcgan.preview()
+            print(np.max(res),np.min(res))
+            for item in res:
+                pic = (item + 1) / 2
+                plt.imshow(pic)
+                plt.show()
+            '''
+            for img in res:
+                plt.imshow(img)
+                plt.show()
+                '''
