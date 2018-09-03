@@ -7,7 +7,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from ops import batch_norm, lrelu, conv2d, linear, get_conved_size, deconv2d
-from utils import imread, get_image
+from utils import imread, get_image, merge, to_rgb, get_layout
 
 class Config(object):
     def __init__(self,  input_height=108, input_width=108, 
@@ -20,7 +20,7 @@ class Config(object):
                         checkpoint_dir='./ckpt',
                         sample_dir='./sample',
                         data_dir='./data',
-                        learning_rate=0.0002, beta1=0.5, epoch=25, train_size=np.inf, log_every=5):
+                        learning_rate=0.0002, beta1=0.5, epoch=25, train_size=np.inf, log_every=5, log_list=[]):
         self.input_height = input_height
         self.input_width = input_width
         self.output_height = output_height
@@ -41,6 +41,7 @@ class Config(object):
         self.epoch = epoch
         self.train_size = train_size
         self.log_every = log_every
+        self.log_list = log_list
 
 
 class DCGAN(object):
@@ -163,13 +164,13 @@ class DCGAN(object):
         if could_load:
             print('[*] Load SUCCESS')
         else:
-            print('[!] Load failed...')
+            print('[!] Load FAILED...')
         
-        for epoch in range(config.epoch):
+        for epoch in range(1, config.epoch+1):
             data = glob.glob(os.path.join(config.data_dir, config.dataset_name, self.cfg.input_fname_pattern))
             np.random.shuffle(data)
             batch_idxs = min(len(data), config.train_size) // config.batch_size
-            print('data loaded: epoch', epoch)
+            print('Data loaded: epoch', epoch)
             
             for idx in range(batch_idxs):
                 #print('start idx:\t', idx)
@@ -180,14 +181,15 @@ class DCGAN(object):
                                 resize_height=self.cfg.output_height,
                                 resize_width=self.cfg.output_width,
                                 crop=self.cfg.crop,) for batch_file in batch_files]
-                batch_images = np.array(batch).astype(np.float32)
-                batch_z = np.random.uniform(-1, 1, [config.batch_size, self.cfg.z_dim]).astype(np.float32)
+                batch_images = np.array(batch)#.astype(np.float32)
+                batch_z = np.random.uniform(-1, 1, [config.batch_size, self.cfg.z_dim])#.astype(np.float32)
+                extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
                 # 更新D
-                self.sess.run(d_opt, feed_dict={self.inputs: batch_images, self.z: batch_z})
+                self.sess.run([d_opt, extra_update_ops], feed_dict={self.inputs: batch_images, self.z: batch_z})
                 # 更新G
-                self.sess.run(g_opt, feed_dict={self.z: batch_z})
+                self.sess.run([g_opt, extra_update_ops], feed_dict={self.inputs: batch_images, self.z: batch_z})
                 # 再来一次
-                self.sess.run(g_opt, feed_dict={self.z: batch_z})
+                self.sess.run([g_opt, extra_update_ops], feed_dict={self.inputs: batch_images, self.z: batch_z})
                 
                 errD_fake = self.d_loss_fake.eval({self.z: batch_z})
                 errD_real = self.d_loss_real.eval({self.inputs: batch_images})
@@ -197,14 +199,58 @@ class DCGAN(object):
                     print('Epoch: [%2d/%2d] [%4d/%4d] time: %4.4f, d_loss: %.8f, g_loss: %.8f' % (epoch, config.epoch, idx, batch_idxs, time.time() - start_time, errD_fake+errD_real, errG))
             if epoch % self.cfg.log_every == 0:
                 self.save(config.checkpoint_dir, epoch+counter)
+            elif epoch+counter in self.cfg.log_list:
+                self.save(config.checkpoint_dir, epoch+counter)
+        self.save(config.checkpoint_dir, config.epoch+counter)
     
-    def preview(self):
-        self.load(self.cfg.checkpoint_dir)
-        _z = np.random.uniform(-1, 1, [self.cfg.batch_size, self.cfg.z_dim]).astype(np.float32)
-        z = tf.placeholder(tf.float32, [self.cfg.batch_size, self.cfg.z_dim])
+    def preview(self, select=True):
+        target = None
+        if select:
+            target = self.list_ckpt()
+        self.load(self.cfg.checkpoint_dir, target)
+        _z = np.random.uniform(-1, 1, [self.cfg.batch_size, self.cfg.z_dim])#.astype(np.float32)
+        #_z = np.random.uniform(-1, 1, [63, self.cfg.z_dim]).astype(np.float32)
+        z = tf.placeholder(tf.float32, [None, self.cfg.z_dim])
         ret = self.sampler(z)
-        img = self.sess.run(ret, feed_dict={z: _z})
-        return img
+        imgs = self.sess.run(ret, feed_dict={z: _z})
+        img = merge(imgs, get_layout(_z.shape[0]))
+        img = to_rgb(img)
+        print('Shape of img:', img.shape)
+        plt.figure(figsize=(16,9))
+        plt.imshow(img)
+        plt.show()
+        '''
+        data = glob.glob(os.path.join(self.cfg.data_dir, self.cfg.dataset_name, self.cfg.input_fname_pattern))
+        np.random.shuffle(data)
+        batch = [get_image( batch_file,
+                            input_height=self.cfg.input_height,
+                            input_width=self.cfg.input_width,
+                            resize_height=self.cfg.output_height,
+                            resize_width=self.cfg.output_width,
+                            crop=self.cfg.crop,) for batch_file in data[:self.cfg.batch_size]]
+        img = merge(np.array(batch), get_layout(_z.shape[0]))
+        img = to_rgb(img)
+        plt.figure(figsize=(16,9))
+        plt.imshow(img)
+        plt.show()
+        '''
+
+    def list_ckpt(self):
+        target_dir = os.path.join(self.cfg.checkpoint_dir, self.model_dir)
+        names = []
+        for root, dirs, files in os.walk(target_dir, topdown=False):
+            for f in files:
+                if len(f)>5 and f[-6:]=='.index':
+                    names.append(f[:-6])
+        if not names:
+            return None
+        names = sorted(names, key=lambda x: int(x.split('-')[-1]))
+        print('Please select a ckpt:')
+        for i in range(len(names)):
+            print('[{}] {}'.format(i, names[i]))
+        select = int(input())
+        print('select:\n',names[select])
+        return names[select]
 
 
 
@@ -221,11 +267,18 @@ class DCGAN(object):
         
         self.saver.save(self.sess, os.path.join(checkpoint_dir, model_name), global_step=step)
     
-    def load(self, checkpoint_dir):
+    def load(self, checkpoint_dir, target=None):
         import re
         print('[*] Loading checkpoints...')
         checkpoint_dir = os.path.join(checkpoint_dir, self.model_dir)
-        
+
+        if target:
+            ckpt_name = target
+            self.saver.restore(self.sess, os.path.join(checkpoint_dir, ckpt_name))
+            counter = int(ckpt_name.split('-')[-1])
+            print(" [*] Success to read {}".format(ckpt_name))
+            return True, counter
+
         ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
         if ckpt and ckpt.model_checkpoint_path:
             ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
@@ -239,21 +292,21 @@ class DCGAN(object):
 
             
 if __name__ == '__main__':
-    training = True
-    cfg = Config(   input_height=96, input_width=96, output_height=96, output_width=96, 
-                  dataset_name='faces', epoch=20, log_every=18)
+    training = False
+    cfg = Config(   input_height=96, 
+                    input_width=96, 
+                    output_height=64, 
+                    output_width=64,
+                    batch_size = 64,
+                    dataset_name='faces', 
+                    epoch=200, log_every=2, log_list=[1, 5, 10, 20, 50, 100, 150, 200, 300, 500])
     
     with tf.Session() as sess:
         dcgan = DCGAN(sess, cfg)
-        if training == False:
+        if training == True:
             dcgan.train()
         else:
-            res = dcgan.preview()
-            print(np.max(res),np.min(res))
-            for item in res:
-                pic = (item + 1) / 2
-                plt.imshow(pic)
-                plt.show()
+            dcgan.preview()
             '''
             for img in res:
                 plt.imshow(img)

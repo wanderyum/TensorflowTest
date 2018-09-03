@@ -7,7 +7,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from ops import batch_norm, lrelu, conv2d, linear, get_conved_size, deconv2d
-from utils import imread, get_image
+from utils import imread, get_image, merge, to_rgb, get_layout
 
 class Config(object):
     def __init__(self,  input_height=108, input_width=108, 
@@ -197,14 +197,40 @@ class DCGAN(object):
                     print('Epoch: [%2d/%2d] [%4d/%4d] time: %4.4f, d_loss: %.8f, g_loss: %.8f' % (epoch, config.epoch, idx, batch_idxs, time.time() - start_time, errD_fake+errD_real, errG))
             if epoch % self.cfg.log_every == 0:
                 self.save(config.checkpoint_dir, epoch+counter)
+        self.save(config.checkpoint_dir, config.epoch+counter)
     
-    def preview(self):
-        self.load(self.cfg.checkpoint_dir)
+    def preview(self, select=True):
+        target = None
+        if select:
+            target = self.list_ckpt()
+        self.load(self.cfg.checkpoint_dir, target)
         _z = np.random.uniform(-1, 1, [self.cfg.batch_size, self.cfg.z_dim]).astype(np.float32)
-        z = tf.placeholder(tf.float32, [self.cfg.batch_size, self.cfg.z_dim])
+        _z = np.random.uniform(-1, 1, [63, self.cfg.z_dim]).astype(np.float32)
+        z = tf.placeholder(tf.float32, [None, self.cfg.z_dim])
         ret = self.sampler(z)
-        img = self.sess.run(ret, feed_dict={z: _z})
-        return img
+        imgs = self.sess.run(ret, feed_dict={z: _z})
+        img = merge(imgs, get_layout(_z.shape[0]))
+        img = to_rgb(img)
+        plt.figure(figsize=(16,9))
+        plt.imshow(img)
+        plt.show()
+
+    def list_ckpt(self):
+        target_dir = os.path.join(self.cfg.checkpoint_dir, self.model_dir)
+        names = []
+        for root, dirs, files in os.walk(target_dir, topdown=False):
+            for f in files:
+                if len(f)>5 and f[-6:]=='.index':
+                    names.append(f[:-6])
+        if not names:
+            return None
+        names = sorted(names, key=lambda x: int(x.split('-')[-1]))
+        print('Please select a ckpt:')
+        for i in range(len(names)):
+            print('[{}] {}'.format(i, names[i]))
+        select = int(input())
+        print('select:\n',names[select])
+        return names[select]
 
 
 
@@ -221,11 +247,18 @@ class DCGAN(object):
         
         self.saver.save(self.sess, os.path.join(checkpoint_dir, model_name), global_step=step)
     
-    def load(self, checkpoint_dir):
+    def load(self, checkpoint_dir, target=None):
         import re
         print('[*] Loading checkpoints...')
         checkpoint_dir = os.path.join(checkpoint_dir, self.model_dir)
-        
+
+        if target:
+            ckpt_name = target
+            self.saver.restore(self.sess, os.path.join(checkpoint_dir, ckpt_name))
+            counter = int(ckpt_name.split('-')[-1])
+            print(" [*] Success to read {}".format(ckpt_name))
+            return True, counter
+
         ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
         if ckpt and ckpt.model_checkpoint_path:
             ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
@@ -240,20 +273,15 @@ class DCGAN(object):
             
 if __name__ == '__main__':
     training = True
-    cfg = Config(   input_height=96, input_width=96, output_height=96, output_width=96, 
+    cfg = Config(   input_height=96, input_width=96, output_height=48, output_width=48, 
                   dataset_name='faces', epoch=20, log_every=18)
     
     with tf.Session() as sess:
         dcgan = DCGAN(sess, cfg)
-        if training == False:
+        if training == True:
             dcgan.train()
         else:
-            res = dcgan.preview()
-            print(np.max(res),np.min(res))
-            for item in res:
-                pic = (item + 1) / 2
-                plt.imshow(pic)
-                plt.show()
+            dcgan.preview()
             '''
             for img in res:
                 plt.imshow(img)
